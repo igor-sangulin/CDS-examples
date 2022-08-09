@@ -1,0 +1,77 @@
+/* https://answers.sap.com/questions/13695119/cds-analytical-query-how-to-use-profit-center-hier.html */
+@AbapCatalog.sqlViewName: 'ZCTRIALBALANCEQ'
+@AbapCatalog.compiler.compareFilter: true
+@AbapCatalog.preserveKey: true
+@AccessControl.authorizationCheck: #CHECK
+@EndUserText.label: 'Trial Balance Query'
+@Analytics.query: true
+define view ZC_TrialBalenceQuery
+  with parameters
+    @Consumption.hidden: true
+    @Environment.systemField: #SYSTEM_LANGUAGE
+    P_Language        : sylangu,
+    @Consumption.hidden: true
+    @Environment.systemField: #SYSTEM_DATE
+    P_KeyDate         : sydate,
+    @Consumption.derivation: { lookupEntity: 'I_CalendarDate',
+        resultElement: 'FirstDayofMonthDate',
+        binding: [
+        { targetElement : 'CalendarDate' , type : #PARAMETER, value : 'P_ToPostingDate' } ]
+       }
+    P_FromPostingDate : fis_budat_from,
+    @Consumption.derivation: { lookupEntity: 'I_MySessionContext',
+        resultElement: 'UserLocalDate', binding: [
+        { targetElement : 'UserID' , type : #SYSTEM_FIELD, value : '#USER' } ]
+       }
+    P_ToPostingDate   : fis_budat_to
+
+
+  as select from ZI_GLAcctBalanceCube
+                 ( P_FromPostingDate: $parameters.P_FromPostingDate, P_ToPostingDate: $parameters.P_ToPostingDate ) as I_GLAcctBalanceCube
+
+{
+  @Consumption.filter: {selectionType: #SINGLE, multipleSelections: false, mandatory: true}
+  @Consumption.derivation: { lookupEntity: 'I_LedgerStdVH',
+        resultElement: 'Ledger', binding: [
+        { targetElement : 'IsLeadingLedger' , type : #CONSTANT, value : 'X' } ]
+       }
+  @AnalyticsDetails.query.variableSequence : 10
+  @AnalyticsDetails.query.axis: #FREE
+  Ledger,
+  @Consumption.filter: {selectionType: #RANGE, multipleSelections: true, mandatory: true}
+  @AnalyticsDetails.query.variableSequence : 20
+  @AnalyticsDetails.query.axis: #ROWS
+  @AnalyticsDetails.query.totals: #SHOW
+  CompanyCode,
+  @Consumption.filter: {selectionType: #RANGE, multipleSelections: true, mandatory: false}
+  @AnalyticsDetails.query.variableSequence : 30
+  @AnalyticsDetails.query.axis: #ROWS
+  @AnalyticsDetails.query.totals: #SHOW
+  @AnalyticsDetails.query.display: #KEY_TEXT
+  GLAccount,
+
+  @Consumption.filter: {  selectionType: #HIERARCHY_NODE, multipleSelections: true, mandatory: false,
+                          hierarchyBinding : [{type : #USER_INPUT, value : 'P_GLAccountHierarchyName', variableSequence: 40 } ] }
+  @EndUserText.label: 'G/L Account Hierarchy'
+  GLAccountHierarchy,
+  
+  @Consumption.filter: {selectionType: #RANGE, multipleSelections: true, mandatory: false}
+  @AnalyticsDetails.query.variableSequence : 50
+  @AnalyticsDetails.query.axis: #ROWS
+  @AnalyticsDetails.query.totals: #SHOW
+  @AnalyticsDetails.query.display: #KEY_TEXT
+  ProfitCenter,
+
+  @Consumption.filter: {  selectionType: #HIERARCHY_NODE, multipleSelections: true, mandatory: false,                                    // PC hierarchy
+                          hierarchyBinding : [{type : #USER_INPUT, value : 'P_ProfitCenterHierarchyName', variableSequence: 60 } ] }     //
+  @EndUserText.label: 'Profit Center Hierarchy'                                                                                          //
+  ProfitCenterHierarchy,                                                                                                                 //
+  
+  ControllingArea,
+
+  _ProfitCenter[1:ValidityEndDate   >= $parameters.P_KeyDate and
+                  ValidityStartDate <= $parameters.P_KeyDate]._Text[1:Language = $parameters.P_Language].ProfitCenterName,
+  @Semantics.amount.currencyCode: 'CompanyCodeCurrency'
+  AmountInCompanyCodeCurrency,
+  CompanyCodeCurrency
+}
